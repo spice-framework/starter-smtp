@@ -281,8 +281,13 @@ func TestSenderHonorsCancellationAndTimeoutBeforeGreeting(t *testing.T) {
 				t.Fatalf("Send() error = %v, want %v", err, test.want)
 			}
 			delivery, ok := errors.AsType[*smtp.DeliveryError](err)
-			if !ok || delivery.Stage() != smtp.StageGreeting {
-				t.Fatalf("Send() error = %#v", err)
+			// The server accepts before cancellation, but DialContext may
+			// observe that cancellation just before returning the accepted
+			// socket. Both stages are valid and remain retry-safe.
+			if !ok ||
+				(delivery.Stage() != smtp.StageDial &&
+					delivery.Stage() != smtp.StageGreeting) {
+				t.Fatalf("Send() error = %v (%#v)", err, err)
 			}
 		})
 	}
