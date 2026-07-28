@@ -356,9 +356,7 @@ func newDeliveryError(
 	retrySafe bool,
 	cause error,
 ) *DeliveryError {
-	if contextCause := context.Cause(ctx); contextCause != nil {
-		cause = contextCause
-	}
+	cause = contextualCause(ctx, cause)
 	code, temporary := classifyFailure(cause)
 	return &DeliveryError{
 		stage:     stage,
@@ -367,6 +365,25 @@ func newDeliveryError(
 		retrySafe: retrySafe,
 		cause:     cause,
 	}
+}
+
+func contextualCause(ctx context.Context, cause error) error {
+	if contextCause := context.Cause(ctx); contextCause != nil {
+		return contextCause
+	}
+	deadline, bounded := ctx.Deadline()
+	networkError, timedOut := errors.AsType[net.Error](cause)
+	if bounded &&
+		!time.Now().Before(deadline) &&
+		timedOut &&
+		networkError != nil &&
+		networkError.Timeout() {
+		// A connection deadline and its context timer expire at the same
+		// instant. The network read can win that race by a few scheduler
+		// ticks, before context.Cause observes the configured timeout.
+		return context.DeadlineExceeded
+	}
+	return cause
 }
 
 func classifyFailure(err error) (int, bool) {
