@@ -64,4 +64,3 @@ jobs:
           --verify-tag
           --generate-notes
           --fail-on-no-commits
-

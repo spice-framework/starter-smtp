@@ -86,4 +86,3 @@ PowerShell users can compare the first checksum column with
 
 GitHub is the distribution mirror; the same repository command constructs
 identical artifacts offline on Windows, Linux, and macOS.
-
