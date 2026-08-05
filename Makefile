@@ -1,4 +1,4 @@
-.PHONY: check compatibility fmt integration verify
+.PHONY: check compatibility fmt integration lint security verify verify-release
 
 check:
 	go run ./internal/qualitygate -mode=check
@@ -12,5 +12,14 @@ fmt:
 integration:
 	go test -tags=integration -count=1 ./integration/...
 
+lint:
+	go run ./internal/qualitygate -mode=lint
+
+security:
+	go run ./internal/qualitygate -mode=security
+
 verify:
 	go run ./internal/qualitygate -mode=verify
+
+verify-release:
+	go run ./internal/qualitygate -mode=verify-release

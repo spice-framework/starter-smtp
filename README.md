@@ -60,7 +60,10 @@ activation metadata.
 ```text
 make check
 make compatibility
+make lint
+make security
 make verify
+make verify-release
 ```
 
 The local gate enforces formatting, module/vendor consistency, vet, allowlisted
@@ -75,3 +78,9 @@ checks both.
 See [`docs/dependency-review.md`](docs/dependency-review.md) for the transport,
 security, cancellation, maintenance, and observability review, and
 [`docs/support.md`](docs/support.md) for the explicit support matrix.
+
+## Releases
+
+The repository builds deterministic source-only releases with an SPDX 2.3
+SBOM, SHA-256 checksums, and Ed25519 signatures. See the exact artifact and
+clean-tag ceremony in [`docs/releasing.md`](docs/releasing.md).

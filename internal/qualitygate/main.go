@@ -39,7 +39,11 @@ func main() {
 }
 
 func execute() int {
-	mode := flag.String("mode", "verify", "verification mode: check, compatibility, fmt, or verify")
+	mode := flag.String(
+		"mode",
+		"verify",
+		"verification mode: check, compatibility, fmt, lint, security, verify, or verify-release",
+	)
 	compatibilityLine := flag.String("line", "all", "Spice compatibility line: minimum, current, or all")
 	flag.Parse()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -92,6 +96,19 @@ func run(ctx context.Context, root, mode, compatibilityLine string) error {
 		}
 	case "fmt":
 		steps = []step{{"formatting", func() error { return format(ctx, root, true) }}}
+	case "lint":
+		steps = []step{
+			identity,
+			dependencies,
+			formatting,
+			{"lint and nil safety", func() error { return lint(ctx, root) }},
+		}
+	case "security":
+		steps = []step{
+			identity,
+			dependencies,
+			{"security", func() error { return security(ctx, root) }},
+		}
 	case "verify":
 		steps = []step{
 			identity,
@@ -106,6 +123,11 @@ func run(ctx context.Context, root, mode, compatibilityLine string) error {
 			{"coverage", func() error { return coverage(ctx, root) }},
 			{"Spice core compatibility", func() error { return coreCompatibility(ctx, root, "all") }},
 			{"offline vendor", func() error { return offline(ctx, root) }},
+		}
+	case "verify-release":
+		steps = []step{
+			identity,
+			{"source release contract", func() error { return releaseContract(ctx, root) }},
 		}
 	default:
 		return fmt.Errorf("unknown mode %q", mode)
@@ -496,7 +518,7 @@ func alternateModfile(ctx context.Context, root, spiceVersion string) (string, f
 		cleanup()
 		return "", nil, fmt.Errorf("write compatibility sumfile: %w", err)
 	}
-	if err := command(
+	if runErr := command(
 		ctx,
 		root,
 		nil,
@@ -505,9 +527,9 @@ func alternateModfile(ctx context.Context, root, spiceVersion string) (string, f
 		"edit",
 		"-modfile="+modfile,
 		"-require="+spiceModulePath+"@"+spiceVersion,
-	); err != nil {
+	); runErr != nil {
 		cleanup()
-		return "", nil, err
+		return "", nil, runErr
 	}
 	return modfile, cleanup, nil
 }
@@ -704,6 +726,53 @@ func offline(ctx context.Context, root string) error {
 		return err
 	}
 	return command(ctx, root, environment, "go", "build", "-trimpath", "./...")
+}
+
+func releaseContract(ctx context.Context, root string) error {
+	if err := command(ctx, root, nil, "go", "test", "-count=1", "./internal/release", "./cmd/starter-smtp-release"); err != nil {
+		return err
+	}
+	parent, err := os.MkdirTemp("", "starter-smtp-release-contract-*")
+	if err != nil {
+		return fmt.Errorf("create release contract directory: %w", err)
+	}
+	defer removeTree(parent)
+	outputDir := filepath.Join(parent, "dist")
+	if runErr := command(
+		ctx,
+		root,
+		nil,
+		"go",
+		"run",
+		"./cmd/starter-smtp-release",
+		"-rehearsal",
+		"-version=v0.0.0-release-contract",
+		"-source-date-epoch=1788000000",
+		"-output="+outputDir,
+	); runErr != nil {
+		return runErr
+	}
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		return fmt.Errorf("read release contract artifacts: %w", err)
+	}
+	actual := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			return fmt.Errorf("release contract emitted unexpected directory %q", entry.Name())
+		}
+		actual = append(actual, entry.Name())
+	}
+	slices.Sort(actual)
+	expected := []string{
+		"checksums.txt",
+		"starter-smtp_0.0.0-release-contract_sbom.spdx.json",
+		"starter-smtp_0.0.0-release-contract_source.tar.gz",
+	}
+	if !slices.Equal(actual, expected) {
+		return fmt.Errorf("unsigned release rehearsal artifacts = %v; want %v", actual, expected)
+	}
+	return nil
 }
 
 func toolPath(ctx context.Context, root, name string) (string, error) {
