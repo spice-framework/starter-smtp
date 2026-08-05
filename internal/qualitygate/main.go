@@ -59,18 +59,20 @@ func run(ctx context.Context, root, mode string) error {
 		return fmt.Errorf("go version is %s; require exactly %s", runtime.Version(), requiredGoVersion)
 	}
 	identity := step{"repository identity", func() error { return checkIdentity(root) }}
+	dependencies := step{"dependency preparation", func() error { return prepareDependencies(ctx, root) }}
 	formatting := step{"formatting", func() error { return format(ctx, root, false) }}
 	modules := step{"module and vendor", func() error { return checkModule(ctx, root) }}
 	vet := step{"go vet", func() error { return command(ctx, root, nil, "go", "vet", "./...") }}
 	var steps []step
 	switch mode {
 	case "check":
-		steps = []step{identity, formatting, modules, vet}
+		steps = []step{identity, dependencies, formatting, modules, vet}
 	case "fmt":
 		steps = []step{{"formatting", func() error { return format(ctx, root, true) }}}
 	case "verify":
 		steps = []step{
 			identity,
+			dependencies,
 			formatting,
 			modules,
 			vet,
@@ -93,6 +95,13 @@ func run(ctx context.Context, root, mode string) error {
 	}
 	output.Print("==> all verification passed")
 	return nil
+}
+
+func prepareDependencies(ctx context.Context, root string) error {
+	if err := networkCommand(ctx, root, "go", "mod", "download"); err != nil {
+		return err
+	}
+	return networkCommand(ctx, root, "go", "-C", "tools", "mod", "download")
 }
 
 func checkIdentity(root string) error {
@@ -349,6 +358,22 @@ func command(ctx context.Context, directory string, environment map[string]strin
 	return nil
 }
 
+func networkCommand(ctx context.Context, directory, executable string, arguments ...string) error {
+	// Dependency preparation is the sole network-capable verifier phase. Go still
+	// authenticates every selected module against go.sum before later checks run
+	// with GOPROXY=off.
+	// #nosec G204,G702 -- executable and arguments are fixed repository-owned values.
+	cmd := exec.CommandContext(ctx, executable, arguments...)
+	cmd.Dir = directory
+	cmd.Env = onlineEnvironment()
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s %s: %w", executable, strings.Join(arguments, " "), err)
+	}
+	return nil
+}
+
 func capture(ctx context.Context, directory string, environment map[string]string, executable string, arguments ...string) (string, error) {
 	// #nosec G204,G702 -- executable and arguments are fixed repository-owned values.
 	cmd := exec.CommandContext(ctx, executable, arguments...)
@@ -367,6 +392,24 @@ func capture(ctx context.Context, directory string, environment map[string]strin
 func mergedEnvironment(overrides map[string]string) []string {
 	values := map[string]string{"GOWORK": "off", "GOPROXY": "off", "GOFLAGS": "", "GOTOOLCHAIN": "local"}
 	maps.Copy(values, overrides)
+	result := make([]string, 0, len(os.Environ())+len(values))
+	for _, entry := range os.Environ() {
+		key, _, found := strings.Cut(entry, "=")
+		if found {
+			if _, replaced := values[strings.ToUpper(key)]; !replaced {
+				result = append(result, entry)
+			}
+		}
+	}
+	for key, value := range values {
+		result = append(result, key+"="+value)
+	}
+	slices.Sort(result)
+	return result
+}
+
+func onlineEnvironment() []string {
+	values := map[string]string{"GOWORK": "off", "GOFLAGS": "", "GOTOOLCHAIN": "local"}
 	result := make([]string, 0, len(os.Environ())+len(values))
 	for _, entry := range os.Environ() {
 		key, _, found := strings.Cut(entry, "=")
