@@ -5,9 +5,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"maps"
@@ -24,7 +26,10 @@ import (
 const (
 	requiredGoVersion = "go1.26.5"
 	modulePath        = "github.com/spice-framework/starter-smtp"
+	spiceModulePath   = "github.com/spice-framework/spice"
 	minimumCoverage   = 85.0
+	compatibilityFile = "spice-compatibility.json"
+	compatibilityV1   = 1
 )
 
 var output = log.New(os.Stdout, "", 0)
@@ -34,13 +39,14 @@ func main() {
 }
 
 func execute() int {
-	mode := flag.String("mode", "verify", "verification mode: check, fmt, or verify")
+	mode := flag.String("mode", "verify", "verification mode: check, compatibility, fmt, or verify")
+	compatibilityLine := flag.String("line", "all", "Spice compatibility line: minimum, current, or all")
 	flag.Parse()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 	root, err := repositoryRoot()
 	if err == nil {
-		err = run(ctx, root, *mode)
+		err = run(ctx, root, *mode, *compatibilityLine)
 	}
 	if err != nil {
 		output.Printf("quality gate failed: %v", err)
@@ -54,12 +60,21 @@ type step struct {
 	run  func() error
 }
 
-func run(ctx context.Context, root, mode string) error {
+func run(ctx context.Context, root, mode, compatibilityLine string) error {
 	if runtime.Version() != requiredGoVersion {
 		return fmt.Errorf("go version is %s; require exactly %s", runtime.Version(), requiredGoVersion)
 	}
-	identity := step{"repository identity", func() error { return checkIdentity(root) }}
-	dependencies := step{"dependency and module preparation", func() error { return prepareDependencies(ctx, root) }}
+	identity := step{"repository identity", func() error { return checkIdentity(ctx, root) }}
+	dependencies := step{"dependency and module preparation", func() error {
+		return prepareDependencies(ctx, root)
+	}}
+	preparationLine := compatibilityLine
+	if mode == "verify" {
+		preparationLine = "all"
+	}
+	compatibilityDependencies := step{"Spice compatibility preparation", func() error {
+		return prepareCompatibilityDependencies(ctx, root, preparationLine)
+	}}
 	formatting := step{"formatting", func() error { return format(ctx, root, false) }}
 	modules := step{"module and vendor", func() error { return checkModule(ctx, root) }}
 	vet := step{"go vet", func() error { return command(ctx, root, nil, "go", "vet", "./...") }}
@@ -67,12 +82,21 @@ func run(ctx context.Context, root, mode string) error {
 	switch mode {
 	case "check":
 		steps = []step{identity, dependencies, formatting, modules, vet}
+	case "compatibility":
+		steps = []step{
+			identity,
+			compatibilityDependencies,
+			{"Spice core compatibility", func() error {
+				return coreCompatibility(ctx, root, compatibilityLine)
+			}},
+		}
 	case "fmt":
 		steps = []step{{"formatting", func() error { return format(ctx, root, true) }}}
 	case "verify":
 		steps = []step{
 			identity,
 			dependencies,
+			compatibilityDependencies,
 			formatting,
 			modules,
 			vet,
@@ -80,6 +104,7 @@ func run(ctx context.Context, root, mode string) error {
 			{"security", func() error { return security(ctx, root) }},
 			{"shuffled and race tests", func() error { return tests(ctx, root) }},
 			{"coverage", func() error { return coverage(ctx, root) }},
+			{"Spice core compatibility", func() error { return coreCompatibility(ctx, root, "all") }},
 			{"offline vendor", func() error { return offline(ctx, root) }},
 		}
 	default:
@@ -98,19 +123,22 @@ func run(ctx context.Context, root, mode string) error {
 }
 
 func prepareDependencies(ctx context.Context, root string) error {
-	if err := networkCommand(ctx, root, "go", "mod", "download"); err != nil {
+	if err := networkCommand(ctx, root, "mod", "download"); err != nil {
 		return err
 	}
-	if err := networkCommand(ctx, root, "go", "-C", "tools", "mod", "download"); err != nil {
+	if err := networkCommand(ctx, root, "-C", "tools", "mod", "download"); err != nil {
 		return err
 	}
 	// A tools module's tidy graph includes test-only dependencies of tool
 	// packages. They are intentionally not fetched by `go mod download`, so the
 	// read-only tidy check belongs in this explicit network-capable phase.
-	return networkCommand(ctx, root, "go", "-C", "tools", "mod", "tidy", "-diff")
+	if err := networkCommand(ctx, root, "-C", "tools", "mod", "tidy", "-diff"); err != nil {
+		return err
+	}
+	return nil
 }
 
-func checkIdentity(root string) error {
+func checkIdentity(ctx context.Context, root string) error {
 	content, err := os.ReadFile(filepath.Join(root, "go.mod")) // #nosec G304 -- root is resolved from this repository's module identity.
 	if err != nil {
 		return fmt.Errorf("read go.mod: %w", err)
@@ -121,7 +149,367 @@ func checkIdentity(root string) error {
 	if bytes.Contains(content, []byte("\nreplace ")) || bytes.Contains(content, []byte("\nreplace (")) {
 		return errors.New("committed go.mod must not contain replace directives")
 	}
+	versions, err := readCompatibility(root)
+	if err != nil {
+		return err
+	}
+	minimum, err := directRequirement(ctx, root, spiceModulePath)
+	if err != nil {
+		return err
+	}
+	if minimum != versions.Minimum {
+		return fmt.Errorf(
+			"go.mod directly requires %s at %s; compatibility minimum is %s",
+			spiceModulePath, minimum, versions.Minimum,
+		)
+	}
 	return nil
+}
+
+type compatibilityVersions struct {
+	Schema  int    `json:"schema"`
+	Minimum string `json:"minimum"`
+	Current string `json:"current"`
+}
+
+func readCompatibility(root string) (compatibilityVersions, error) {
+	content, err := os.ReadFile(filepath.Join(root, compatibilityFile)) // #nosec G304 -- the repository root and filename are fixed.
+	if err != nil {
+		return compatibilityVersions{}, fmt.Errorf("read %s: %w", compatibilityFile, err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	var result compatibilityVersions
+	if err := decoder.Decode(&result); err != nil {
+		return compatibilityVersions{}, fmt.Errorf("decode %s: %w", compatibilityFile, err)
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return compatibilityVersions{}, fmt.Errorf("%s has trailing JSON values", compatibilityFile)
+		}
+		return compatibilityVersions{}, fmt.Errorf("decode trailing %s content: %w", compatibilityFile, err)
+	}
+	if result.Schema != compatibilityV1 {
+		return compatibilityVersions{}, fmt.Errorf("%s schema %d is unsupported", compatibilityFile, result.Schema)
+	}
+	if strings.TrimSpace(result.Minimum) == "" || strings.TrimSpace(result.Current) == "" {
+		return compatibilityVersions{}, fmt.Errorf("%s requires explicit minimum and current versions", compatibilityFile)
+	}
+	if strings.TrimSpace(result.Minimum) != result.Minimum || strings.TrimSpace(result.Current) != result.Current {
+		return compatibilityVersions{}, fmt.Errorf("%s versions must not contain surrounding whitespace", compatibilityFile)
+	}
+	if result.Minimum == result.Current {
+		return compatibilityVersions{}, fmt.Errorf("%s minimum and current versions must differ", compatibilityFile)
+	}
+	return result, nil
+}
+
+type compatibilityBoundary struct {
+	Name    string
+	Version string
+}
+
+func (versions compatibilityVersions) boundaries(line string) ([]compatibilityBoundary, error) {
+	switch line {
+	case "minimum":
+		return []compatibilityBoundary{{Name: "minimum", Version: versions.Minimum}}, nil
+	case "current":
+		return []compatibilityBoundary{{Name: "current", Version: versions.Current}}, nil
+	case "all":
+		return []compatibilityBoundary{
+			{Name: "minimum", Version: versions.Minimum},
+			{Name: "current", Version: versions.Current},
+		}, nil
+	default:
+		return nil, fmt.Errorf("compatibility line %q is invalid; require minimum, current, or all", line)
+	}
+}
+
+func directRequirement(ctx context.Context, root, module string) (string, error) {
+	content, err := capture(ctx, root, nil, "go", "mod", "edit", "-json")
+	if err != nil {
+		return "", fmt.Errorf("read direct module requirements: %w", err)
+	}
+	var metadata struct {
+		Require []struct {
+			Path     string
+			Version  string
+			Indirect bool
+		}
+	}
+	if err := json.Unmarshal([]byte(content), &metadata); err != nil {
+		return "", fmt.Errorf("decode go.mod metadata: %w", err)
+	}
+	for _, requirement := range metadata.Require {
+		if requirement.Path == module && !requirement.Indirect && requirement.Version != "" {
+			return requirement.Version, nil
+		}
+	}
+	return "", fmt.Errorf("go.mod must directly require %s at an exact version", module)
+}
+
+func prepareCompatibilityDependencies(ctx context.Context, root, line string) error {
+	versions, err := readCompatibility(root)
+	if err != nil {
+		return err
+	}
+	boundaries, err := versions.boundaries(line)
+	if err != nil {
+		return err
+	}
+	for _, boundary := range boundaries {
+		if err := resolveExactCoreVersion(ctx, root, boundary.Version); err != nil {
+			return fmt.Errorf("validate %s Spice version: %w", boundary.Name, err)
+		}
+		modfile, cleanup, err := alternateModfile(ctx, root, boundary.Version)
+		if err != nil {
+			return err
+		}
+		downloadErr := networkCommand(ctx, root, "mod", "download", "-modfile="+modfile)
+		cleanup()
+		if downloadErr != nil {
+			return fmt.Errorf("prepare %s Spice graph: %w", boundary.Name, downloadErr)
+		}
+	}
+	return nil
+}
+
+func resolveExactCoreVersion(ctx context.Context, root, version string) error {
+	content, err := networkCapture(
+		ctx,
+		root,
+		"list",
+		"-mod=mod",
+		"-m",
+		"-json",
+		spiceModulePath+"@"+version,
+	)
+	if err != nil {
+		return err
+	}
+	var module struct {
+		Path    string
+		Version string
+	}
+	if err := json.Unmarshal([]byte(content), &module); err != nil {
+		return fmt.Errorf("decode resolved Spice module: %w", err)
+	}
+	if module.Path != spiceModulePath || module.Version != version {
+		return fmt.Errorf(
+			"spice version resolved as %s@%s; require exactly %s@%s",
+			module.Path, module.Version, spiceModulePath, version,
+		)
+	}
+	return nil
+}
+
+func coreCompatibility(ctx context.Context, root, line string) error {
+	versions, err := readCompatibility(root)
+	if err != nil {
+		return err
+	}
+	boundaries, err := versions.boundaries(line)
+	if err != nil {
+		return err
+	}
+	for _, boundary := range boundaries {
+		if err := verifyCompatibilityBoundary(ctx, root, boundary); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyCompatibilityBoundary(
+	ctx context.Context,
+	root string,
+	boundary compatibilityBoundary,
+) (returnErr error) {
+	before, err := compatibilityState(root)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		after, stateErr := compatibilityState(root)
+		if stateErr != nil {
+			returnErr = errors.Join(returnErr, stateErr)
+			return
+		}
+		if !maps.Equal(before, after) {
+			returnErr = errors.Join(returnErr, errors.New("compatibility verification modified repository contents"))
+		}
+	}()
+
+	modfile, cleanup, err := alternateModfile(ctx, root, boundary.Version)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	selected, err := capture(
+		ctx,
+		root,
+		map[string]string{"GOFLAGS": "-mod=mod"},
+		"go",
+		"list",
+		"-mod=mod",
+		"-modfile="+modfile,
+		"-m",
+		"-f={{.Version}}",
+		spiceModulePath,
+	)
+	if err != nil {
+		return fmt.Errorf("resolve %s MVS graph: %w", boundary.Name, err)
+	}
+	if strings.TrimSpace(selected) != boundary.Version {
+		return fmt.Errorf(
+			"%s MVS graph selected Spice %q; require exactly %q",
+			boundary.Name, strings.TrimSpace(selected), boundary.Version,
+		)
+	}
+	packages, err := compatibilityPackages(ctx, root, modfile)
+	if err != nil {
+		return err
+	}
+	output.Printf(
+		"testing %s Spice %s across %s",
+		boundary.Name,
+		boundary.Version,
+		strings.Join(packages, ", "),
+	)
+	vetArguments := []string{"vet", "-mod=mod", "-modfile=" + modfile}
+	vetArguments = append(vetArguments, packages...)
+	if err := command(ctx, root, map[string]string{"GOFLAGS": "-mod=mod"}, "go", vetArguments...); err != nil {
+		return err
+	}
+	testArguments := []string{
+		"test",
+		"-mod=mod",
+		"-modfile=" + modfile,
+		"-race",
+		"-shuffle=on",
+		"-count=1",
+	}
+	testArguments = append(testArguments, packages...)
+	return command(ctx, root, map[string]string{"GOFLAGS": "-mod=mod"}, "go", testArguments...)
+}
+
+func compatibilityPackages(ctx context.Context, root, modfile string) ([]string, error) {
+	content, err := capture(
+		ctx,
+		root,
+		map[string]string{"GOFLAGS": "-mod=mod"},
+		"go",
+		"list",
+		"-mod=mod",
+		"-modfile="+modfile,
+		"-f={{.ImportPath}}",
+		"./...",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list compatibility product packages: %w", err)
+	}
+	toolPackage := modulePath + "/internal/qualitygate"
+	var result []string
+	for candidate := range strings.FieldsSeq(content) {
+		if candidate != toolPackage {
+			result = append(result, candidate)
+		}
+	}
+	slices.Sort(result)
+	if len(result) == 0 {
+		return nil, errors.New("compatibility graph contains no product packages")
+	}
+	return result, nil
+}
+
+func compatibilityState(root string) (map[string][sha256.Size]byte, error) {
+	opened, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, fmt.Errorf("open compatibility repository root: %w", err)
+	}
+	defer func() {
+		if closeErr := opened.Close(); closeErr != nil {
+			output.Printf("warning: close compatibility repository root %q: %v", root, closeErr)
+		}
+	}()
+	result := make(map[string][sha256.Size]byte)
+	err = fs.WalkDir(opened.FS(), ".", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if path != "." && entry.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !entry.Type().IsRegular() {
+			return nil
+		}
+		content, readErr := opened.ReadFile(path)
+		if readErr != nil {
+			return fmt.Errorf("read compatibility state %q: %w", path, readErr)
+		}
+		result[filepath.ToSlash(path)] = sha256.Sum256(content)
+		return nil
+	})
+	return result, err
+}
+
+func alternateModfile(ctx context.Context, root, spiceVersion string) (string, func(), error) {
+	productMod, err := os.ReadFile(filepath.Join(root, "go.mod")) // #nosec G304 -- root is the fixed repository root.
+	if err != nil {
+		return "", nil, fmt.Errorf("read product go.mod: %w", err)
+	}
+	productSum, err := os.ReadFile(filepath.Join(root, "go.sum")) // #nosec G304 -- root is the fixed repository root.
+	if err != nil {
+		return "", nil, fmt.Errorf("read product go.sum: %w", err)
+	}
+	file, err := os.CreateTemp("", "spice-starter-smtp-compat-*.mod")
+	if err != nil {
+		return "", nil, fmt.Errorf("create compatibility modfile: %w", err)
+	}
+	modfile := file.Name()
+	sumfile := strings.TrimSuffix(modfile, ".mod") + ".sum"
+	cleanup := func() {
+		for _, path := range []string{modfile, sumfile} {
+			if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				output.Printf("warning: remove compatibility file %q: %v", path, removeErr)
+			}
+		}
+	}
+	if _, err := file.Write(productMod); err != nil {
+		closeErr := file.Close()
+		cleanup()
+		return "", nil, errors.Join(
+			fmt.Errorf("write compatibility modfile: %w", err),
+			closeErr,
+		)
+	}
+	if err := file.Close(); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("close compatibility modfile: %w", err)
+	}
+	// #nosec G703 -- sumfile is derived only from the path returned by os.CreateTemp above.
+	if err := os.WriteFile(sumfile, productSum, 0o600); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("write compatibility sumfile: %w", err)
+	}
+	if err := command(
+		ctx,
+		root,
+		nil,
+		"go",
+		"mod",
+		"edit",
+		"-modfile="+modfile,
+		"-require="+spiceModulePath+"@"+spiceVersion,
+	); err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	return modfile, cleanup, nil
 }
 
 func format(ctx context.Context, root string, write bool) error {
@@ -361,20 +749,38 @@ func command(ctx context.Context, directory string, environment map[string]strin
 	return nil
 }
 
-func networkCommand(ctx context.Context, directory, executable string, arguments ...string) error {
+func networkCommand(ctx context.Context, directory string, arguments ...string) error {
 	// Dependency and module preparation is the sole network-capable verifier
 	// phase. Go still authenticates every selected module against go.sum before
 	// later checks run with GOPROXY=off.
 	// #nosec G204,G702 -- executable and arguments are fixed repository-owned values.
-	cmd := exec.CommandContext(ctx, executable, arguments...)
+	cmd := exec.CommandContext(ctx, "go", arguments...)
 	cmd.Dir = directory
 	cmd.Env = onlineEnvironment()
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s %s: %w", executable, strings.Join(arguments, " "), err)
+		return fmt.Errorf("go %s: %w", strings.Join(arguments, " "), err)
 	}
 	return nil
+}
+
+func networkCapture(ctx context.Context, directory string, arguments ...string) (string, error) {
+	// Compatibility preparation is explicitly network-capable. Go authenticates
+	// the exact module through go.sum and the public checksum database before the
+	// actual compatibility checks repeat with GOPROXY=off.
+	// #nosec G204,G702 -- arguments are repository-owned values.
+	cmd := exec.CommandContext(ctx, "go", arguments...)
+	cmd.Dir = directory
+	cmd.Env = onlineEnvironment()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("go %s: %w\n%s", strings.Join(arguments, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
 }
 
 func capture(ctx context.Context, directory string, environment map[string]string, executable string, arguments ...string) (string, error) {

@@ -1,7 +1,10 @@
-.PHONY: check fmt integration verify
+.PHONY: check compatibility fmt integration verify
 
 check:
 	go run ./internal/qualitygate -mode=check
+
+compatibility:
+	go run ./internal/qualitygate -mode=compatibility
 
 fmt:
 	go run ./internal/qualitygate -mode=fmt
