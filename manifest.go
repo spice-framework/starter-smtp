@@ -1,14 +1,14 @@
 package smtp
 
-import spicestarter "github.com/StevenBuglione/spice/starter"
+import spicestarter "github.com/spice-framework/spice/starter"
 
 // Manifest returns SMTP starter compatibility and review metadata.
 func Manifest() spicestarter.Manifest {
 	return spicestarter.Must(spicestarter.Spec{
 		Schema:    spicestarter.Schema,
-		ID:        "github.com/StevenBuglione/spice/starter/smtp",
+		ID:        "github.com/spice-framework/spice/starter/smtp",
 		Version:   "0.1.0-dev",
-		Module:    "github.com/StevenBuglione/spice",
+		Module:    "github.com/spice-framework/spice",
 		SpiceAPI:  spicestarter.APIVersion,
 		MinimumGo: "1.26",
 		License:   "Apache-2.0",
@@ -17,7 +17,7 @@ func Manifest() spicestarter.Manifest {
 			Mode: spicestarter.ActivationExplicitConstructor,
 			EntryPoints: []spicestarter.EntryPoint{
 				{
-					Package: "github.com/StevenBuglione/spice/starter/smtp",
+					Package: "github.com/spice-framework/spice/starter/smtp",
 					Symbol:  "New",
 				},
 			},

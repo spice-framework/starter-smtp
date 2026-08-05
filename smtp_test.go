@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	spicemail "github.com/StevenBuglione/spice/mail"
-	"github.com/StevenBuglione/spice/starter/smtp"
+	spicemail "github.com/spice-framework/spice/mail"
+	"github.com/spice-framework/spice/starter/smtp"
 )
 
 const (

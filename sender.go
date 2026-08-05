@@ -11,8 +11,8 @@ import (
 	"net/textproto"
 	"time"
 
-	spicemail "github.com/StevenBuglione/spice/mail"
-	"github.com/StevenBuglione/spice/retry"
+	spicemail "github.com/spice-framework/spice/mail"
+	"github.com/spice-framework/spice/retry"
 )
 
 // Stage identifies the SMTP operation that failed without exposing message or
@@ -168,7 +168,7 @@ func (sender *Sender) Send(ctx context.Context, message spicemail.Message) error
 	config := sender.config
 	return retry.Run(ctx, retry.Policy{
 		ID:             "smtp.Send",
-		Module:         "github.com/StevenBuglione/spice/starter/smtp",
+		Module:         "github.com/spice-framework/spice/starter/smtp",
 		MaxAttempts:    config.maxAttempts,
 		InitialBackoff: config.initialBackoff,
 		MaxBackoff:     config.maxBackoff,

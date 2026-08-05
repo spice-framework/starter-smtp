@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/StevenBuglione/spice/retry"
+	"github.com/spice-framework/spice/retry"
 )
 
 const (
