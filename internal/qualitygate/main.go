@@ -59,7 +59,7 @@ func run(ctx context.Context, root, mode string) error {
 		return fmt.Errorf("go version is %s; require exactly %s", runtime.Version(), requiredGoVersion)
 	}
 	identity := step{"repository identity", func() error { return checkIdentity(root) }}
-	dependencies := step{"dependency preparation", func() error { return prepareDependencies(ctx, root) }}
+	dependencies := step{"dependency and module preparation", func() error { return prepareDependencies(ctx, root) }}
 	formatting := step{"formatting", func() error { return format(ctx, root, false) }}
 	modules := step{"module and vendor", func() error { return checkModule(ctx, root) }}
 	vet := step{"go vet", func() error { return command(ctx, root, nil, "go", "vet", "./...") }}
@@ -101,7 +101,13 @@ func prepareDependencies(ctx context.Context, root string) error {
 	if err := networkCommand(ctx, root, "go", "mod", "download"); err != nil {
 		return err
 	}
-	return networkCommand(ctx, root, "go", "-C", "tools", "mod", "download")
+	if err := networkCommand(ctx, root, "go", "-C", "tools", "mod", "download"); err != nil {
+		return err
+	}
+	// A tools module's tidy graph includes test-only dependencies of tool
+	// packages. They are intentionally not fetched by `go mod download`, so the
+	// read-only tidy check belongs in this explicit network-capable phase.
+	return networkCommand(ctx, root, "go", "-C", "tools", "mod", "tidy", "-diff")
 }
 
 func checkIdentity(root string) error {
@@ -163,9 +169,6 @@ func goFiles(root string) ([]string, error) {
 
 func checkModule(ctx context.Context, root string) error {
 	if err := command(ctx, root, nil, "go", "mod", "tidy", "-diff"); err != nil {
-		return err
-	}
-	if err := command(ctx, root, nil, "go", "-C", "tools", "mod", "tidy", "-diff"); err != nil {
 		return err
 	}
 	temporary, err := os.MkdirTemp("", "spice-starter-smtp-vendor-")
@@ -359,9 +362,9 @@ func command(ctx context.Context, directory string, environment map[string]strin
 }
 
 func networkCommand(ctx context.Context, directory, executable string, arguments ...string) error {
-	// Dependency preparation is the sole network-capable verifier phase. Go still
-	// authenticates every selected module against go.sum before later checks run
-	// with GOPROXY=off.
+	// Dependency and module preparation is the sole network-capable verifier
+	// phase. Go still authenticates every selected module against go.sum before
+	// later checks run with GOPROXY=off.
 	// #nosec G204,G702 -- executable and arguments are fixed repository-owned values.
 	cmd := exec.CommandContext(ctx, executable, arguments...)
 	cmd.Dir = directory
