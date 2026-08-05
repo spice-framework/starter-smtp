@@ -22,7 +22,7 @@ import (
 	"time"
 
 	spicemail "github.com/spice-framework/spice/mail"
-	"github.com/spice-framework/spice/starter/smtp"
+	smtp "github.com/spice-framework/starter-smtp"
 )
 
 const (
