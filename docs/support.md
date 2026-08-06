@@ -10,7 +10,7 @@
 | Transport security | Verified STARTTLS or implicit TLS; TLS 1.2 minimum |
 | Authentication | SMTP AUTH PLAIN only after TLS |
 | Real-system acceptance | Mailpit v1.30.0 image digest `sha256:0059ef81e492a7192af3816281eed6859eb078bd7bdc58b76757c13e10e53a7d` |
-| Release parity tool | `github.com/spice-framework/development/cmd/spice-dev` at `v0.0.0-20260806052122-9025218a91c0` |
+| Release parity tool | `github.com/spice-framework/development/cmd/spice-dev` at `v0.0.0-20260806121906-963bb6676069` |
 | Release verifier tool | `github.com/spice-framework/toolchain/cmd/spice-library-release-verify` at `v0.0.0-20260806054457-a83d9b58034c` |
 
 The first preview tag will define the first published minimum Spice version.
