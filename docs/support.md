@@ -10,9 +10,9 @@
 | Transport security | Verified STARTTLS or implicit TLS; TLS 1.2 minimum |
 | Authentication | SMTP AUTH PLAIN only after TLS |
 | Real-system acceptance | Mailpit v1.30.0 image digest `sha256:0059ef81e492a7192af3816281eed6859eb078bd7bdc58b76757c13e10e53a7d` |
-| Release parity tool | `github.com/spice-framework/development/cmd/spice-dev` at `v0.0.0-20260806132124-4c308d1b9fda` |
+| Release renderer | `github.com/spice-framework/development/cmd/spice-dev` at `v0.0.0-20260806132124-4c308d1b9fda` |
 | Release verifier tool | `github.com/spice-framework/toolchain/cmd/spice-library-release-verify` at `v0.0.0-20260806133530-71211498297c` |
-| Release trust anchor | Configured at `security/release/ed25519-public.pem`; SHA-256 fingerprint `fc7de5d2c7594c6e1871da5f2dc46969d29a9aa2d6a5babaca47fc1ae51b621e` |
+| Release trust anchor | Configured at `security/release/ed25519-public.pem`; DER SHA-256 fingerprint `fc7de5d2c7594c6e1871da5f2dc46969d29a9aa2d6a5babaca47fc1ae51b621e` |
 | Release secret contract | Only repository secret `SPICE_LIBRARY_RELEASE_SIGNING_KEY` is explicitly mapped to the protected reusable workflow; inheritance is forbidden |
 
 The first preview tag will define the first published minimum Spice version.
@@ -37,7 +37,7 @@ that require those capabilities should use a separately reviewed transport
 behind the public `mail.Sender` interface.
 
 The pinned central signer and independent verifier are the protected production
-path. Windows and Linux CI still compare the central renderer with the retained
-builder under vendor-only offline resolution; the retained command is a parity
-oracle only. The committed public trust anchor establishes the identity against
-which future releases must be verified; no signed release is claimed yet.
+path. Windows and Linux CI render the same inert central plan twice under
+vendor-only offline resolution and require byte-identical unsigned artifacts.
+The committed public trust anchor establishes the identity against which every
+published release must be independently verified.

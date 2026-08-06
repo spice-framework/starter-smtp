@@ -61,7 +61,7 @@ activation metadata.
 make check
 make compatibility
 make lint
-make release-parity
+make release-rehearsal
 make security
 make verify
 make verify-release
@@ -76,12 +76,11 @@ through Mailpit's API. CI exposes separate minimum/current compatibility jobs
 for review, while `make verify` remains the definitive local gate and always
 checks both.
 
-Release parity runs the exact `spice-dev` tool authorized by `go.mod` and the
-retained repository builder twice each, entirely from `vendor` with network and
-workspace resolution disabled. It compares archive entries after normalizing
-only the builders' documented root-directory spelling, requires equivalent
-SBOM package and dependency facts, verifies both checksum files, and forbids
-rehearsal signatures on Windows and Linux.
+Release rehearsal runs the exact `spice-dev` tool authorized by `go.mod`
+twice from one inert plan, entirely from `vendor` with network and workspace
+resolution disabled. It requires byte-identical outputs, canonical checksums,
+central-renderer SPDX provenance, and no rehearsal signatures on Windows and
+Linux.
 
 See [`docs/dependency-review.md`](docs/dependency-review.md) for the transport,
 security, cancellation, maintenance, and observability review, and
@@ -92,6 +91,7 @@ security, cancellation, maintenance, and observability review, and
 The repository builds deterministic source-only releases with an SPDX 2.3
 SBOM, SHA-256 checksums, and Ed25519 signatures. See the exact artifact and
 clean-tag ceremony in [`docs/releasing.md`](docs/releasing.md).
-The retained repository builder and signed production workflow remain the
-release authority while the centrally rendered unsigned candidate is held to
-the dual-builder parity contract.
+The protected central workflow is the sole release authority. It validates the
+candidate without credentials, renders and signs with immutable trusted code,
+authenticates the result with an independent verifier, and publishes only after
+separate protected approvals.
