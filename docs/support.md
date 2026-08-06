@@ -10,6 +10,7 @@
 | Transport security | Verified STARTTLS or implicit TLS; TLS 1.2 minimum |
 | Authentication | SMTP AUTH PLAIN only after TLS |
 | Real-system acceptance | Mailpit v1.30.0 image digest `sha256:0059ef81e492a7192af3816281eed6859eb078bd7bdc58b76757c13e10e53a7d` |
+| Release parity tool | `github.com/spice-framework/development/cmd/spice-dev` at `v0.0.0-20260806034648-1856466df09d` |
 
 The first preview tag will define the first published minimum Spice version.
 Until then, the exact direct Spice requirement in `go.mod` is the provisional
@@ -31,3 +32,7 @@ compatibility version or written to release metadata.
 custom SASL mechanisms, and connection pooling are not claimed. Applications
 that require those capabilities should use a separately reviewed transport
 behind the public `mail.Sender` interface.
+
+The pinned central tool renders unsigned rehearsal candidates only. Windows
+and Linux CI compare them with the retained builder under vendor-only offline
+resolution; the retained command remains the signed production authority.
