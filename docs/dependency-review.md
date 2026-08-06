@@ -71,6 +71,9 @@ system without exposing message payloads or credentials.
   and writes only to caller-supplied temporary output directories. The
   independent verifier authenticates release artifacts against an external
   trust anchor and exact Git objects. Neither tool generates private material.
-- Maintenance: the protected central workflow owns production. The retained
-  local builder remains only as the dual-builder parity oracle and is not
-  removed by this cutover.
+- Maintenance: the protected central workflow owns production. The caller maps
+  only the repository `SPICE_LIBRARY_RELEASE_SIGNING_KEY` secret; secret
+  inheritance and additional mappings are rejected by repository verification.
+  The protected signing and publishing environments remain approval boundaries.
+  The retained local builder remains only as the dual-builder parity oracle and
+  is not removed by this cutover.

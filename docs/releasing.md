@@ -99,18 +99,20 @@ openssl genpkey -algorithm ED25519 -out starter-smtp-release-key.pem
 
 This repository owns a distinct user-generated public trust anchor at
 `security/release/ed25519-public.pem`. Its SHA-256 fingerprint is
-`23a69c1a365cc97f877b3865651278bf67eaa249d83b8ac6d3ee1179caada240`.
+`fc7de5d2c7594c6e1871da5f2dc46969d29a9aa2d6a5babaca47fc1ae51b621e`.
 Review that fingerprint out of band before trusting a release. Store only the
-matching private key as `SPICE_LIBRARY_RELEASE_SIGNING_KEY` in the protected
-`release-signing` environment. The private key is never copied into source,
-SBOM, logs, or release output.
+matching private key as the repository Actions secret
+`SPICE_LIBRARY_RELEASE_SIGNING_KEY`. The release workflow explicitly maps only
+that secret to the protected reusable workflow. The private key is never copied
+into source, SBOM, logs, or release output.
 
 The reviewed public-anchor prerequisite is configured. This does not mean a
 signed release exists. The repository must also have protected
 `release-signing` and `release-publish` environments. Do not create or push any
-release tag until both environments, required reviewers, and the private-key
-secret are configured. The caller does not forward repository secrets; the
-central signing job can read only the secret attached to its named environment.
+release tag until both environments, required reviewers, and the repository
+private-key secret are configured. The caller forwards exactly that one secret;
+`secrets: inherit` and additional secret mappings are forbidden. The reusable
+workflow retains the protected environments as the human approval boundaries.
 
 Verify downloaded assets before use:
 
@@ -130,7 +132,8 @@ PowerShell users can compare the first checksum column with
 
 ## Release ceremony
 
-1. Confirm the reviewed public key and both protected environments are active.
+1. Confirm the reviewed public key, repository signing secret, and both
+   protected environments are active.
 2. Run `make verify` once on the final clean commit, then `make verify-release`.
 3. Create and push an annotated canonical `vX.Y.Z` tag.
 4. The pinned central workflow validates the exact tag, signs with the protected
