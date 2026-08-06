@@ -3,14 +3,15 @@
 | Contract | Current development support |
 |---|---|
 | Go | Exactly 1.26.5 for development and release verification |
-| Spice provisional minimum | `v0.0.0-20260805162230-a0bbb964bf6b` |
-| Spice current | `v0.0.0-20260805185924-ee45e0aa386e` |
+| Spice provisional minimum | `v0.0.0-20260805222830-a2ecd56df246` |
+| Spice current | `v0.0.0-20260806053623-2ec6f862073f` |
 | Operating systems | Windows, Linux, and macOS; Linux integration evidence |
 | Architectures | amd64 and arm64 compilation through the core public API |
 | Transport security | Verified STARTTLS or implicit TLS; TLS 1.2 minimum |
 | Authentication | SMTP AUTH PLAIN only after TLS |
 | Real-system acceptance | Mailpit v1.30.0 image digest `sha256:0059ef81e492a7192af3816281eed6859eb078bd7bdc58b76757c13e10e53a7d` |
-| Release parity tool | `github.com/spice-framework/development/cmd/spice-dev` at `v0.0.0-20260806034648-1856466df09d` |
+| Release parity tool | `github.com/spice-framework/development/cmd/spice-dev` at `v0.0.0-20260806052122-9025218a91c0` |
+| Release verifier tool | `github.com/spice-framework/toolchain/cmd/spice-library-release-verify` at `v0.0.0-20260806054457-a83d9b58034c` |
 
 The first preview tag will define the first published minimum Spice version.
 Until then, the exact direct Spice requirement in `go.mod` is the provisional
