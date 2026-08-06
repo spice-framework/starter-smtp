@@ -97,18 +97,20 @@ Generate an offline Ed25519 PKCS#8 key and keep it outside the repository:
 openssl genpkey -algorithm ED25519 -out starter-smtp-release-key.pem
 ```
 
-This repository must own a distinct user-generated key; never reuse another
-library's key. Derive its public half with the pinned central tool, review it,
-and commit it as `security/release/ed25519-public.pem`. Store only the private
-key as `SPICE_LIBRARY_RELEASE_SIGNING_KEY` in the protected `release-signing`
-environment. The private key is never copied into source, SBOM, logs, or
-release output.
+This repository owns a distinct user-generated public trust anchor at
+`security/release/ed25519-public.pem`. Its SHA-256 fingerprint is
+`23a69c1a365cc97f877b3865651278bf67eaa249d83b8ac6d3ee1179caada240`.
+Review that fingerprint out of band before trusting a release. Store only the
+matching private key as `SPICE_LIBRARY_RELEASE_SIGNING_KEY` in the protected
+`release-signing` environment. The private key is never copied into source,
+SBOM, logs, or release output.
 
-The repository must also have a protected `release-publish` environment. Do
-not create or push any release tag until both environments, required reviewers,
-the secret, and the reviewed public anchor are configured. The caller does not
-forward repository secrets; the central signing job can read only the secret
-attached to its named environment.
+The reviewed public-anchor prerequisite is configured. This does not mean a
+signed release exists. The repository must also have protected
+`release-signing` and `release-publish` environments. Do not create or push any
+release tag until both environments, required reviewers, and the private-key
+secret are configured. The caller does not forward repository secrets; the
+central signing job can read only the secret attached to its named environment.
 
 Verify downloaded assets before use:
 

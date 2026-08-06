@@ -12,6 +12,7 @@
 | Real-system acceptance | Mailpit v1.30.0 image digest `sha256:0059ef81e492a7192af3816281eed6859eb078bd7bdc58b76757c13e10e53a7d` |
 | Release parity tool | `github.com/spice-framework/development/cmd/spice-dev` at `v0.0.0-20260806132124-4c308d1b9fda` |
 | Release verifier tool | `github.com/spice-framework/toolchain/cmd/spice-library-release-verify` at `v0.0.0-20260806133530-71211498297c` |
+| Release trust anchor | Configured at `security/release/ed25519-public.pem`; SHA-256 fingerprint `23a69c1a365cc97f877b3865651278bf67eaa249d83b8ac6d3ee1179caada240` |
 
 The first preview tag will define the first published minimum Spice version.
 Until then, the exact direct Spice requirement in `go.mod` is the provisional
@@ -37,4 +38,5 @@ behind the public `mail.Sender` interface.
 The pinned central signer and independent verifier are the protected production
 path. Windows and Linux CI still compare the central renderer with the retained
 builder under vendor-only offline resolution; the retained command is a parity
-oracle only.
+oracle only. The committed public trust anchor establishes the identity against
+which future releases must be verified; no signed release is claimed yet.
