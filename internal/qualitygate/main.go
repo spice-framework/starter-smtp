@@ -187,7 +187,7 @@ func checkIdentity(ctx context.Context, root string) error {
 			spiceModulePath, minimum, versions.Minimum,
 		)
 	}
-	return nil
+	return checkReleaseWorkflow(root)
 }
 
 type compatibilityVersions struct {

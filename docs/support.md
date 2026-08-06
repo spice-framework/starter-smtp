@@ -34,6 +34,7 @@ custom SASL mechanisms, and connection pooling are not claimed. Applications
 that require those capabilities should use a separately reviewed transport
 behind the public `mail.Sender` interface.
 
-The pinned central tool renders unsigned rehearsal candidates only. Windows
-and Linux CI compare them with the retained builder under vendor-only offline
-resolution; the retained command remains the signed production authority.
+The pinned central signer and independent verifier are the protected production
+path. Windows and Linux CI still compare the central renderer with the retained
+builder under vendor-only offline resolution; the retained command is a parity
+oracle only.
