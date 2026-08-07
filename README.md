@@ -1,5 +1,7 @@
 # Spice SMTP Starter
 
+Unified documentation: [spiceframework.dev/integrations/smtp](https://spiceframework.dev/integrations/smtp/).
+
 `starter-smtp` is the independently versioned secure SMTP transport for the
 [Spice Framework](https://github.com/spice-framework/spice). It implements the
 public `mail.Sender` interface without a global client, runtime reflection, or
