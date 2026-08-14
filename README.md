@@ -43,9 +43,10 @@ pre-DATA failures, and ambiguous post-DATA failures are never replayed.
 
 ## Compatibility
 
-The current development line requires Go 1.26.5. Its verified Spice minimum is
-`v0.0.0-20260805222830-a2ecd56df246` and its current endpoint is
-`v0.0.0-20260806053623-2ec6f862073f`. The repository-owned
+The current development line requires Go 1.26.6. Its verified Spice minimum is
+`v0.1.0-preview.4.0.20260814014712-5f535e696300`; that same release is the current
+endpoint until a later reviewed Core version advances the compatibility line.
+The repository-owned
 [`spice-compatibility.json`](spice-compatibility.json) is the machine-readable
 source of these boundaries. The current endpoint is a pinned forward-
 compatibility signal, not a moving runtime dependency. The complete gate uses

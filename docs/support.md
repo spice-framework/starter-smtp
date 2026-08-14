@@ -2,9 +2,9 @@
 
 | Contract | Current development support |
 |---|---|
-| Go | Exactly 1.26.5 for development and release verification |
-| Spice provisional minimum | `v0.0.0-20260805222830-a2ecd56df246` |
-| Spice current | `v0.0.0-20260806053623-2ec6f862073f` |
+| Go | Exactly 1.26.6 for development and release verification |
+| Spice provisional minimum | `v0.1.0-preview.4.0.20260814014712-5f535e696300` |
+| Spice current | `v0.1.0-preview.4.0.20260814014712-5f535e696300` |
 | Operating systems | Windows, Linux, and macOS; Linux integration evidence |
 | Architectures | amd64 and arm64 compilation through the core public API |
 | Transport security | Verified STARTTLS or implicit TLS; TLS 1.2 minimum |
